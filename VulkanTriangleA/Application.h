@@ -1,8 +1,9 @@
 #pragma once
 
 #define GLFW_INCLUDE_VULKAN
-#include "GLFW/GLFW/glfw3.h"
 
+#include "GLFW/GLFW/glfw3.h"
+#include "Renderer.h"
 
 class Application
 {

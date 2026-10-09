@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "Renderer.h"
 
 void Application::Init()
 {
@@ -32,7 +33,8 @@ void Application::InitWindow()
 
 void Application::InitVulkan()
 {
-
+    Renderer::CreateInstance;
+    Renderer::PickPhysicalDevice;
 }
 
 void Application::DestroyWindow()
