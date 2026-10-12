@@ -33,14 +33,14 @@ void Application::InitWindow()
 
 void Application::InitVulkan()
 {
-    Renderer::CreateInstance;
-    Renderer::PickPhysicalDevice;
+    &Renderer::CreateInstance;
+    &Renderer::PickPhysicalDevice;
+    &Renderer::CreateLogicalDevice;
 }
 
 void Application::DestroyWindow()
 {
     glfwDestroyWindow(window);
-
     glfwTerminate();
 }
 

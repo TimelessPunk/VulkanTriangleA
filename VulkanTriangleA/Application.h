@@ -5,7 +5,7 @@
 #include "GLFW/GLFW/glfw3.h"
 #include "Renderer.h"
 
-class Application
+class Application 
 {
 public:
 	int width = 800;
@@ -16,13 +16,12 @@ public:
 	void Init();
 	void Run();
 	void Destroy();
-					
-private:			
+
+private:
 	void InitWindow();
 	void InitVulkan();
 
 	void DestroyWindow();
 	void DestroyVulkan();
-
 };
 

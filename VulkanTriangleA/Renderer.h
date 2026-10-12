@@ -9,11 +9,14 @@ class Renderer
 public:
 	void CreateInstance();
 	void PickPhysicalDevice();
+	void CreateLogicalDevice();
 	bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice);
 
 private:
 	vk::raii::Context context;
 	vk::raii::Instance instance = nullptr;
+	vk::raii::Device device = nullptr;
+	vk::raii::Queue graphicsQueue = nullptr;
 	vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
 	vk::raii::PhysicalDevice physicalDevice = nullptr;
 
