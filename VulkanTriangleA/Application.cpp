@@ -37,6 +37,7 @@ void Application::InitVulkan()
     r.CreateInstance();
     r.PickPhysicalDevice();
     r.CreateLogicalDevice();
+    r.CreateSurface();
 }
 
 void Application::DestroyWindow()

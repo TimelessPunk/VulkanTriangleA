@@ -10,6 +10,7 @@ public:
 	void CreateInstance();
 	void PickPhysicalDevice();
 	void CreateLogicalDevice();
+	void CreateSurface();
 	bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice);
 
 private:
@@ -17,6 +18,7 @@ private:
 	vk::raii::Instance instance = nullptr;
 	vk::raii::Device device = nullptr;
 	vk::raii::Queue graphicsQueue = nullptr;
+	vk::raii::SurfaceKHR surface = nullptr;
 	vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
 	vk::raii::PhysicalDevice physicalDevice = nullptr;
 

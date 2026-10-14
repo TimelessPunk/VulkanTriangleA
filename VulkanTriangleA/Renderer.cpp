@@ -1,10 +1,14 @@
 #include "Renderer.h"
 #include "Debug.h"
 #include <iostream>
+
 //#include <print>
 
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/GLFW/glfw3native.h>
 
 void Renderer::CreateInstance()
 {
@@ -58,7 +62,7 @@ void Renderer::CreateInstance()
 		.enabledLayerCount = static_cast<uint32_t>(requiredLayers.size()),
 		.ppEnabledLayerNames = requiredLayers.data(),
 		.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
-		.ppEnabledExtensionNames = requiredExtensions.data()
+		.ppEnabledExtensionNames = requiredExtensions.data(),
 	};
 
 	instance = vk::raii::Instance(context, instance_create_info);
@@ -80,11 +84,21 @@ void Renderer::PickPhysicalDevice()
 void Renderer::CreateLogicalDevice()
 {
 	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
-	std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName };
 
-	auto graphicsQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, [](auto const& qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
-	auto graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
-	float queuePriority = 0.5f;
+	uint32_t queueIndex = ~0;
+	for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
+	{
+		if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) && 
+			physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
+		{
+			queueIndex = qfpIndex;
+			break;
+		}
+	}
+	if (queueIndex == ~0)
+	{
+		throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+	}
 
 	vk::StructureChain<vk::PhysicalDeviceFeatures2,
 		vk::PhysicalDeviceVulkan11Features,
@@ -97,8 +111,8 @@ void Renderer::CreateLogicalDevice()
 			{.extendedDynamicState = true} 
 		};
 
-	vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-
+	float queuePriority = 0.5f;
+	vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
 	vk::DeviceCreateInfo deviceCreateInfo{
 	.pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
 	.queueCreateInfoCount = 1,
@@ -108,7 +122,17 @@ void Renderer::CreateLogicalDevice()
 	};
 
 	device = vk::raii::Device(physicalDevice, deviceCreateInfo);
-	graphicsQueue = vk::raii::Queue(device, graphicsIndex, 0);
+	graphicsQueue = vk::raii::Queue(device, queueIndex, 0);
+}
+
+void Renderer::CreateSurface()
+{
+	VkSurfaceKHR _surface;
+	if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0)
+	{
+		throw std::runtime_error("failed to create window surface !");
+	}
+	surface = vk::raii::SurfaceKHR(instance, _surface);
 }
 
 std::vector<const char*> requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
@@ -179,14 +203,14 @@ void Renderer::SetupDebugMessenger()
 		vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
 		vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 	
-	vk::DebugUtilsMessengerCreateInfoEXT createInfo
+	vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo
 	{
 		.messageSeverity = severityFlags,
 		.messageType = typeFlags,
 		.pfnUserCallback = &DebugCallback,
 	};
 
-	debugMessenger = instance.createDebugUtilsMessengerEXT(createInfo);
+	debugMessenger = instance.createDebugUtilsMessengerEXT(debugCreateInfo);
 }
 
 vk::Bool32 Renderer::DebugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity, vk::DebugUtilsMessageTypeFlagsEXT type, const vk::DebugUtilsMessengerCallbackDataEXT* data, void*)
