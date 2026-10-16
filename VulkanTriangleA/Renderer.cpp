@@ -1,8 +1,14 @@
+#include <iostream>
+#include <cstdint>
+#include <limits>
+#include <algorithm>
 #include "Renderer.h"
 #include "Debug.h"
-#include <iostream>
 
 //#include <print>
+
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 
 #define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
@@ -135,7 +141,15 @@ void Renderer::CreateSurface()
 	surface = vk::raii::SurfaceKHR(instance, _surface);
 }
 
-std::vector<const char*> requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
+void Renderer::CreateSwapchain()
+{
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
+	swapChainExtent = chooseSwapExtent(surfaceCapabilities);
+	unit32_t minImageCount = chooseSwapMinImageCount(surfaceCapabilities);
+
+	std::vector<vk::SurfaceCapabilitiesKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
+	swapChainSurfaceFormat = chooseSwapSurfaceFormat(availableFormats);
+}
 
 bool Renderer::isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice)
 {
@@ -165,6 +179,43 @@ bool Renderer::isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice)
 		features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 	return supportsVulkan1_4 && supportsGraphics && supportsAllRequiredExtensions && supportRequiredFeatures;
+}
+
+void Renderer::SetWindow(GLFWwindow* _window)
+{
+	window = _window;
+}
+
+vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats)
+{
+	const auto formatIt = std::ranges::find_if(availableFormats, [](const auto& format) {
+		return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+		});
+	return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
+}
+
+vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes)
+{
+	assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
+	return std::ranges::any_of(availablePresentModes,
+		[](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
+		vk::PresentModeKHR::eMailbox :
+		vk::PresentModeKHR::eFifo;
+}
+
+vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
+{
+	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+	{
+		return capabilities.currentExtent;
+	}
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+
+	return{
+		std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+		std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+	};
 }
 
 std::vector<char const*> Renderer::GetRequiredExtensions()

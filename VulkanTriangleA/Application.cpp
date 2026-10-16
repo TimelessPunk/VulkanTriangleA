@@ -33,11 +33,14 @@ void Application::InitWindow()
 
 void Application::InitVulkan()
 {
-    Renderer r;
-    r.CreateInstance();
-    r.PickPhysicalDevice();
-    r.CreateLogicalDevice();
-    r.CreateSurface();
+    renderer = new Renderer();
+    renderer->SetWindow(window);
+
+    renderer->CreateInstance();
+    renderer->PickPhysicalDevice();
+    renderer->CreateLogicalDevice();
+    renderer->CreateSurface();
+    renderer->CreateSwapchain();
 }
 
 void Application::DestroyWindow()
