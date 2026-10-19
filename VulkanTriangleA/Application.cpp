@@ -34,13 +34,14 @@ void Application::InitWindow()
 void Application::InitVulkan()
 {
     renderer = new Renderer();
-    renderer->SetWindow(window);
 
     renderer->CreateInstance();
     renderer->PickPhysicalDevice();
     renderer->CreateLogicalDevice();
     renderer->CreateSurface();
     renderer->CreateSwapchain();
+    renderer->CreateImageViews();
+    renderer->CreateGraphicsPipeline();
 }
 
 void Application::DestroyWindow()

@@ -14,23 +14,33 @@ public:
 	void CreateSurface();
 	void CreateSwapchain();
 	bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice);
-	void SetWindow(GLFWwindow* _window);
+	void CreateImageViews();
+	void CreateGraphicsPipeline();
 
 private:
+	GLFWwindow* _window = nullptr;
 	vk::raii::Context context;
 	vk::raii::Instance instance = nullptr;
+	vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
+	vk::raii::SurfaceKHR surface = nullptr;
+	vk::raii::PhysicalDevice physicalDevice = nullptr;
 	vk::raii::Device device = nullptr;
 	vk::raii::Queue graphicsQueue = nullptr;
-	vk::raii::SurfaceKHR surface = nullptr;
-	vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
-	vk::raii::PhysicalDevice physicalDevice = nullptr;
+	vk::raii::SwapchainKHR swapChain = nullptr;
+	std::vector<vk::Image> swapChainImages;
+	vk::SurfaceFormatKHR swapChainSurfaceFormat;
+	vk::Extent2D swapChainExtent;
+	std::vector<vk::raii::ImageView> swapChainImageViews;
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+	vk::raii::PipelineLayout pipelineLayout = nullptr;
+
+
 	std::vector<const char*> requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
 
 	std::vector<char const*> GetRequiredExtensions();
 	std::vector<char const*> GetRequiredLayers();
 
 	void SetupDebugMessenger();
-	GLFWwindow* window = nullptr;
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(
 		vk::DebugUtilsMessageSeverityFlagBitsEXT, 

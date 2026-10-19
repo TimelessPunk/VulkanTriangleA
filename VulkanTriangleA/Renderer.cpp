@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <limits>
 #include <algorithm>
+#include <fstream>
 #include "Renderer.h"
 #include "Debug.h"
 
@@ -134,22 +135,13 @@ void Renderer::CreateLogicalDevice()
 void Renderer::CreateSurface()
 {
 	VkSurfaceKHR _surface;
-	if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0)
+	if (glfwCreateWindowSurface(*instance, _window, nullptr, &_surface) != 0)
 	{
 		throw std::runtime_error("failed to create window surface !");
 	}
 	surface = vk::raii::SurfaceKHR(instance, _surface);
 }
 
-void Renderer::CreateSwapchain()
-{
-	vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
-	swapChainExtent = chooseSwapExtent(surfaceCapabilities);
-	unit32_t minImageCount = chooseSwapMinImageCount(surfaceCapabilities);
-
-	std::vector<vk::SurfaceCapabilitiesKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
-	swapChainSurfaceFormat = chooseSwapSurfaceFormat(availableFormats);
-}
 
 bool Renderer::isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice)
 {
@@ -181,16 +173,147 @@ bool Renderer::isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice)
 	return supportsVulkan1_4 && supportsGraphics && supportsAllRequiredExtensions && supportRequiredFeatures;
 }
 
-void Renderer::SetWindow(GLFWwindow* _window)
+void Renderer::CreateImageViews()
 {
-	window = _window;
+	assert(swapChainImageViews.empty());
+
+	vk::ImageViewCreateInfo imageViewCreateInfo{
+		.viewType = vk::ImageViewType::e2D,
+		.format = swapChainSurfaceFormat.format,
+		.subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
+	};
+
+	for (auto& image : swapChainImages)
+	{
+		imageViewCreateInfo.image = image;
+		swapChainImageViews.emplace_back(device, imageViewCreateInfo);
+	}
 }
 
-vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats)
+static std::vector<char> readFile(const std::string& filename) {
+	std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+	if (!file.is_open()) {
+		throw std::runtime_error("failed to open file!");
+	}
+	std::vector<char> buffer(file.tellg());
+	file.seekg(0, std::ios::beg);
+	file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+	file.close();
+	return buffer;
+}
+
+[[nodiscard]] vk::raii::ShaderModule createShaderModule(vk::raii::Device const& device,
+	const std::vector<char>& code)
 {
-	const auto formatIt = std::ranges::find_if(availableFormats, [](const auto& format) {
-		return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
-		});
+	vk::ShaderModuleCreateInfo createInfo{
+		.codeSize = code.size() * sizeof(char),
+		.pCode = reinterpret_cast<const uint32_t*>(code.data()) };
+	vk::raii::ShaderModule shaderModule{ device, createInfo };
+
+	return shaderModule;
+}
+
+void Renderer::CreateGraphicsPipeline()
+{
+	vk::raii::ShaderModule shaderModule = createShaderModule(device, readFile("shaders/slang.spv"));
+
+	vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ 
+		.stage = vk::ShaderStageFlagBits::eVertex,
+		.module = shaderModule,
+		.pName = "vertMain" };
+	vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
+		.stage = vk::ShaderStageFlagBits::eFragment,
+		.module = shaderModule,
+		.pName = "fragMain" };
+	vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+	vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
+		.topology = vk::PrimitiveTopology::eTriangleList 
+	};
+	vk::PipelineViewportStateCreateInfo viewportState{
+		.viewportCount = 1,
+		.scissorCount = 1
+	};
+
+	vk::PipelineRasterizationStateCreateInfo rasterizer
+	{ 
+		.depthClampEnable = vk::False,
+		.rasterizerDiscardEnable = vk::False,
+		.polygonMode = vk::PolygonMode::eFill,
+		.cullMode = vk::CullModeFlagBits::eBack,
+		.frontFace = vk::FrontFace::eClockwise,
+		.depthBiasEnable = vk::False,
+		.lineWidth = 1.0f 
+	};
+
+	vk::PipelineMultisampleStateCreateInfo multisampling
+	{ 
+		.rasterizationSamples = vk::SampleCountFlagBits::e1, 
+		.sampleShadingEnable = vk::False 
+	};
+
+	vk::PipelineColorBlendAttachmentState colorBlendAttachment
+	{
+		.blendEnable = vk::False,
+		.colorWriteMask = vk::ColorComponentFlagBits::eR | 
+		vk::ColorComponentFlagBits::eG | 
+		vk::ColorComponentFlagBits::eB | 
+		vk::ColorComponentFlagBits::eA 
+	};
+
+	vk::PipelineColorBlendStateCreateInfo colorBlending
+	{
+		.logicOpEnable = vk::False, 
+		.logicOp = vk::LogicOp::eCopy, 
+		.attachmentCount = 1, 
+		.pAttachments = &colorBlendAttachment 
+	};
+
+	std::vector<vk::DynamicState>      dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+	vk::PipelineDynamicStateCreateInfo dynamicState
+	{ 
+		.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), 
+		.pDynamicStates = dynamicStates.data() 
+	};
+
+	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ .setLayoutCount = 0, .pushConstantRangeCount = 0 };
+	pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+}
+
+uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities)
+{
+	auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
+	if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount))
+	{
+		minImageCount = surfaceCapabilities.maxImageCount;
+	}
+	return minImageCount;
+}
+
+vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities)
+{
+	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+	{
+		return capabilities.currentExtent;
+	}
+	int width, height;
+	GLFWwindow* _window;
+	glfwGetFramebufferSize(_window, &width, &height);
+
+	return{
+		std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+		std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+	};
+}
+
+vk::SurfaceFormatKHR chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats)
+{
+	assert(!availableFormats.empty());
+	const auto formatIt = std::ranges::find_if(
+		availableFormats,
+		[](const auto& format) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; });
 	return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
 }
 
@@ -203,19 +326,33 @@ vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& 
 		vk::PresentModeKHR::eFifo;
 }
 
-vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
+void Renderer::CreateSwapchain()
 {
-	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-	{
-		return capabilities.currentExtent;
-	}
-	int width, height;
-	glfwGetFramebufferSize(window, &width, &height);
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
+	swapChainExtent = chooseSwapExtent(surfaceCapabilities);
+	uint32_t minImageCount = chooseSwapMinImageCount(surfaceCapabilities);
 
-	return{
-		std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
-		std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
-	};
+	std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
+	swapChainSurfaceFormat = chooseSwapSurfaceFormat(availableFormats);
+
+	std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR(*surface);
+	vk::PresentModeKHR presentMode = chooseSwapPresentMode(availablePresentModes);
+
+	vk::SwapchainCreateInfoKHR swapChainCreateInfo{ .surface = *surface,
+	.minImageCount = minImageCount,
+	.imageFormat = swapChainSurfaceFormat.format,
+	.imageColorSpace = swapChainSurfaceFormat.colorSpace,
+	.imageExtent = swapChainExtent,
+	.imageArrayLayers = 1,
+	.imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+	.imageSharingMode = vk::SharingMode::eExclusive,
+	.preTransform = surfaceCapabilities.currentTransform,
+	.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+	.presentMode = presentMode,
+	.clipped = true };
+
+	swapChain = vk::raii::SwapchainKHR(device, swapChainCreateInfo);
+	swapChainImages = swapChain.getImages();
 }
 
 std::vector<char const*> Renderer::GetRequiredExtensions()
