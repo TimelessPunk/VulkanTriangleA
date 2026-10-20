@@ -16,6 +16,7 @@
 #include <GLFW/GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/GLFW/glfw3native.h>
+#include <queue>
 
 void Renderer::CreateInstance()
 {
@@ -132,16 +133,20 @@ void Renderer::CreateLogicalDevice()
 	graphicsQueue = vk::raii::Queue(device, queueIndex, 0);
 }
 
-void Renderer::CreateSurface()
+void Renderer::CreateSurface(GLFWwindow* window)
 {
+	if (window == nullptr)
+	{
+		throw std::runtime_error("GLFW window is null!");
+	}
+
 	VkSurfaceKHR _surface;
-	if (glfwCreateWindowSurface(*instance, _window, nullptr, &_surface) != 0)
+	if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0)
 	{
 		throw std::runtime_error("failed to create window surface !");
 	}
 	surface = vk::raii::SurfaceKHR(instance, _surface);
 }
-
 
 bool Renderer::isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice)
 {
@@ -190,10 +195,11 @@ void Renderer::CreateImageViews()
 	}
 }
 
-static std::vector<char> readFile(const std::string& filename) {
+static std::vector<char> readFile(const std::string& filename)
+{
 	std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-	if (!file.is_open()) {
+	if (!file.is_open())
+	{
 		throw std::runtime_error("failed to open file!");
 	}
 	std::vector<char> buffer(file.tellg());
@@ -215,7 +221,47 @@ static std::vector<char> readFile(const std::string& filename) {
 
 void Renderer::DrawFrame()
 {
+	auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
+	if (fenceResult != vk::Result::eSuccess)
+	{
+		throw std::runtime_error(" failed to wait for fence ! ");
+	}
+	device.resetFences(*drawFence);
 
+	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompletSemaphore, nullptr);
+
+	recordCommandBuffer(imageIndex);
+
+	graphicsQueue.waitIdle();
+
+	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+	const vk::SubmitInfo submitInfo{
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &*presentCompletSemaphore,
+		.pWaitDstStageMask = &waitDestinationStageMask,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &*commandBuffer,
+		.signalSemaphoreCount = 1,
+		.pSignalSemaphores = &*renderFinishedSemaphore
+	};
+	graphicsQueue.submit(submitInfo, *drawFence);
+
+	const vk::PresentInfoKHR presentInfoKHR
+	{
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &*renderFinishedSemaphore,
+		.swapchainCount = 1,
+		.pSwapchains = &*swapChain,
+		.pImageIndices = &imageIndex
+	};
+	result = graphicsQueue.presentKHR(presentInfoKHR);
+}
+
+void Renderer::CreateSyncObjects()
+{
+	presentCompletSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+	renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+	drawFence = vk::raii::Fence(device, { .flags = vk::FenceCreateFlagBits::eSignaled });
 }
 
 void Renderer::CreateGraphicsPipeline()
@@ -291,7 +337,7 @@ void Renderer::CreateGraphicsPipeline()
 			.stageCount = 2,
 			.pStages = shaderStages,
 			.pVertexInputState = &vertexInputInfo,
-			.pInputAssemblyState = &viewportState,
+			.pInputAssemblyState = &inputAssembly,
 			.pViewportState = &viewportState,
 			.pRasterizationState = &rasterizer,
 			.pMultisampleState = &multisampling,
@@ -360,10 +406,10 @@ void Renderer::recordCommandBuffer(uint32_t imageIndex)
 		imageIndex,
 		vk::ImageLayout::eColorAttachmentOptimal,
 		vk::ImageLayout::ePresentSrcKHR,
-		vk::AccessFlagBits2::eColorAttachmentWrite,                // srcAccessMask
-		{},                                                        // dstAccessMask
-		vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
-		vk::PipelineStageFlagBits2::eBottomOfPipe                  // dstStage
+		vk::AccessFlagBits2::eColorAttachmentWrite,        
+		{},                                                
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+		vk::PipelineStageFlagBits2::eBottomOfPipe          
 	);
 	commandBuffer.end();
 }
@@ -403,15 +449,14 @@ uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabi
 	return minImageCount;
 }
 
-vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities)
+vk::Extent2D Renderer::chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities)
 {
 	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 	{
 		return capabilities.currentExtent;
 	}
 	int width, height;
-	GLFWwindow* _window;
-	glfwGetFramebufferSize(_window, &width, &height);
+	glfwGetFramebufferSize(window, &width, &height);
 
 	return{
 		std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
