@@ -5,6 +5,8 @@
 #include <vulkan/vulkan_core.h>
 #include <GLFW/GLFW/glfw3.h>
 
+constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
 class Renderer
 {
 public:
@@ -12,6 +14,7 @@ public:
 	void PickPhysicalDevice();
 	void CreateLogicalDevice();
 	void CreateSurface(GLFWwindow* window);
+	void CreateSyncObjects();
 	void CreateSwapchain();
 	bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice);
 	void CreateImageViews();
@@ -30,7 +33,6 @@ public:
 	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities);
 	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const;
 	void DrawFrame();
-	void CreateSyncObjects();
 	vk::raii::Device const& GetDevice() const
 	{
 		return device;
@@ -58,8 +60,8 @@ private:
 	vk::raii::CommandPool commandPool = nullptr;
 	std::vector <vk::raii::CommandBuffer> commandBuffers;
 
-	std::vector<vk::raii::Semaphore> presentCompletSemaphore;
-	std::vector<vk::raii::Semaphore> renderFinishedSemaphore;
+	std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
+	std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
 	std::vector<vk::raii::Fence> inFlightFences;
 
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
@@ -70,7 +72,6 @@ private:
 	std::vector<char const*> GetRequiredLayers();
 
 	void SetupDebugMessenger();
-	int MAX_FRAMES_IN_FLIGHT = 2;
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(
 		vk::DebugUtilsMessageSeverityFlagBitsEXT, 

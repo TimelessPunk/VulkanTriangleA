@@ -218,6 +218,22 @@ static std::vector<char> readFile(const std::string& filename)
 	return shaderModule;
 }
 
+void Renderer::CreateSyncObjects()
+{
+	assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
+
+	for (size_t i = 0; i < swapChainImages.size(); i++)
+	{
+		renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+	}
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+		inFlightFences.emplace_back(device, vk::FenceCreateInfo{ .flags = vk::FenceCreateFlagBits::eSignaled });
+	}
+}
+
 void Renderer::DrawFrame()
 {
 	auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
@@ -227,7 +243,7 @@ void Renderer::DrawFrame()
 	}
 	device.resetFences(*inFlightFences[frameIndex]);
 
-	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompletSemaphore[frameIndex], nullptr);
+	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
 	commandBuffers[frameIndex].reset();
 	recordCommandBuffer(imageIndex);
@@ -235,19 +251,19 @@ void Renderer::DrawFrame()
 	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 	const vk::SubmitInfo submitInfo{
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &*presentCompletSemaphore[frameIndex],
+		.pWaitSemaphores = &*presentCompleteSemaphores[frameIndex],
 		.pWaitDstStageMask = &waitDestinationStageMask,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &*commandBuffers[frameIndex],
 		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &*renderFinishedSemaphore[frameIndex]
+		.pSignalSemaphores = &*renderFinishedSemaphores[frameIndex]
 	};
 	graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
 
 	const vk::PresentInfoKHR presentInfoKHR
 	{
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &*renderFinishedSemaphore[frameIndex],
+		.pWaitSemaphores = &*renderFinishedSemaphores[frameIndex],
 		.swapchainCount = 1,
 		.pSwapchains = &*swapChain,
 		.pImageIndices = &imageIndex
@@ -431,22 +447,6 @@ void Renderer::transition_image_layout(uint32_t imageIndex, vk::ImageLayout old_
 		.imageMemoryBarrierCount = 1,
 		.pImageMemoryBarriers = &barrier };
 	commandBuffers[frameIndex].pipelineBarrier2(dependency_info);
-}
-
-void Renderer::CreateSyncObjects()
-{
-	assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
-
-	for (size_t i = 0; i < swapChainImages.size(); i++)
-	{
-		renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
-	}
-
-	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
-		inFlightFences.emplace_back(device, vk::FenceCreateInfo{ .flags = vk::FenceCreateFlagBits::eSignaled });
-	}
 }
 
 uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities)
