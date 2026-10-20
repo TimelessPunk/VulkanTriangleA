@@ -17,6 +17,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/GLFW/glfw3native.h>
 #include <queue>
+#include "Application.h"
 
 void Renderer::CreateInstance()
 {
@@ -241,9 +242,22 @@ void Renderer::DrawFrame()
 	{
 		throw std::runtime_error(" failed to wait for fence ! ");
 	}
-	device.resetFences(*inFlightFences[frameIndex]);
 
 	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+
+	if (result == vk::Result::eErrorOutOfDateKHR)
+	{
+		RecreateSwapChain();
+		return;
+	}
+
+	if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+	{
+		assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+		throw std::runtime_error("failed to acquire swap chain image !");
+	}
+
+	device.resetFences(*inFlightFences[frameIndex]);
 
 	commandBuffers[frameIndex].reset();
 	recordCommandBuffer(imageIndex);
@@ -270,8 +284,45 @@ void Renderer::DrawFrame()
 	};
 	result = graphicsQueue.presentKHR(presentInfoKHR);
 
+	if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
+	{
+		framebufferResized = false;
+		RecreateSwapChain();
+	}
+	else
+	{
+		assert(result == vk::Result::eSuccess);
+	}
+
 	frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
+
+void Renderer::CleanUpSwapChain()
+{
+	swapChainImageViews.clear();
+	swapChain = nullptr;
+}
+
+void Renderer::RecreateSwapChain()
+{
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(window, &width, &height);
+	while ((width == 0 || height == 0) && !glfwWindowShouldClose(window))
+	{
+		glfwGetFramebufferSize(window, &width, &height);
+		glfwWaitEvents();
+	}
+	if (glfwWindowShouldClose(window))
+	{
+		return;
+	}
+	device.waitIdle();
+
+	CleanUpSwapChain();
+	CreateSwapchain();
+	CreateImageViews();
+}
+
 
 void Renderer::CreateGraphicsPipeline()
 {
@@ -519,6 +570,12 @@ void Renderer::CreateSwapchain()
 
 	swapChain = vk::raii::SwapchainKHR(device, swapChainCreateInfo);
 	swapChainImages = swapChain.getImages();
+}
+
+void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+	auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+	framebufferResized = true;
 }
 
 std::vector<char const*> Renderer::GetRequiredExtensions()

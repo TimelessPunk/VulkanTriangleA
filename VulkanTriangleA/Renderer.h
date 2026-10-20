@@ -33,10 +33,10 @@ public:
 	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities);
 	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const;
 	void DrawFrame();
-	vk::raii::Device const& GetDevice() const
-	{
-		return device;
-	}
+	vk::raii::Device const& GetDevice() const { return device; }
+	void RecreateSwapChain();
+	void CleanUpSwapChain();
+	static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
 private:
 	GLFWwindow* window = nullptr;
@@ -65,6 +65,7 @@ private:
 	std::vector<vk::raii::Fence> inFlightFences;
 
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+	bool framebufferResized = false;
 
 	std::vector<const char*> requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
 
