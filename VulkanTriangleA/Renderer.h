@@ -17,7 +17,7 @@ public:
 	void CreateImageViews();
 	void CreateGraphicsPipeline();
 	void CreateCommandPool();
-	void CreateCommandBuffer();
+	void CreateCommandBuffers();
 	void recordCommandBuffer(uint32_t imageIndex);
 	void transition_image_layout(
 		uint32_t                imageIndex,
@@ -45,6 +45,7 @@ private:
 	vk::raii::PhysicalDevice physicalDevice = nullptr;
 	vk::raii::Device device = nullptr;
 	uint32_t queueIndex = ~0;
+	uint32_t frameIndex = 0;
 	vk::raii::Queue graphicsQueue = nullptr;
 	vk::raii::SwapchainKHR swapChain = nullptr;
 	std::vector<vk::Image> swapChainImages;
@@ -55,11 +56,11 @@ private:
 	vk::raii::PipelineLayout pipelineLayout = nullptr;
 	vk::raii::Pipeline graphicsPipeline = nullptr;
 	vk::raii::CommandPool commandPool = nullptr;
-	vk::raii::CommandBuffer commandBuffer = nullptr;
+	std::vector <vk::raii::CommandBuffer> commandBuffers;
 
-	vk::raii::Semaphore presentCompletSemaphore = nullptr;
-	vk::raii::Semaphore renderFinishedSemaphore = nullptr;
-	vk::raii::Fence drawFence = nullptr;
+	std::vector<vk::raii::Semaphore> presentCompletSemaphore;
+	std::vector<vk::raii::Semaphore> renderFinishedSemaphore;
+	std::vector<vk::raii::Fence> inFlightFences;
 
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
 
@@ -69,6 +70,7 @@ private:
 	std::vector<char const*> GetRequiredLayers();
 
 	void SetupDebugMessenger();
+	int MAX_FRAMES_IN_FLIGHT = 2;
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(
 		vk::DebugUtilsMessageSeverityFlagBitsEXT, 
